@@ -19,7 +19,7 @@ for line in lines:
 	if len(li) > 2 and li[2] == "resign":
 		f_h.write('\n')
 		if li[0][0] == "B":
-			f_w.write("0\n")
+			f_w.write("-1\n")
 		else:
 			f_w.write("1\n")
 

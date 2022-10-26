@@ -1,4 +1,4 @@
-#include <bits/stdc++.h>
+ #include <bits/stdc++.h>
 #include <torch/torch.h>
 #include "neural/network.h"
 
@@ -12,9 +12,11 @@ std::vector<std::vector<std::vector<std::vector<bool>>>> replay_buffer_eval;
 std::vector<std::vector<int>> replay_buffer_eval_policy;
 std::vector<int> is_win_eval;
 
-int channel_size = 3;
+int seq_len = 3;
+int channel_size = seq_len * 2 + 1;
 int batch_size = 512;
 int num_of_training_data = 13000;
+int num_of_testing_data = 0;
 
 std::pair<int, int> reconstruct(int pos) {
 	int i, j;
@@ -66,17 +68,16 @@ void open_history() {
 		int len = vec.size();
 
 		std::vector<std::vector<std::vector<bool>>> trajectory;
-		std::vector<std::vector<bool>> black(9, std::vector<bool>(9, 0));
-		std::vector<std::vector<bool>> white(9, std::vector<bool>(9, 0));
+		std::vector<std::vector<bool>> board(9, std::vector<bool>(9, 0));
 		
 		for (auto &v : vec) {
 			std::pair<int, int> p = reconstruct(v);
 			if (v < 81) {     // black
-				black[p.first][p.second] = 1;
-				trajectory.push_back(black);
+				board[p.first][p.second] = 1;
+				trajectory.push_back(board);
 			} else {          // white
-				white[p.first][p.second] = 1;
-				trajectory.push_back(white);
+				board[p.first][p.second] = -1;
+				trajectory.push_back(board);
 			}
 
 		}
@@ -89,8 +90,6 @@ void open_history() {
 			replay_buffer_policy.push_back(vec);
 		}
 		
-		
-
 		cnt++;
     }
 
@@ -101,81 +100,147 @@ void open_history() {
 
 }
 
-auto Sample_Batch(int batch_size, bool eval) {
+auto Sample_Batch_Eval(int batch_size) {
 	srand((unsigned)time(NULL));
-
 	
 	auto tmp_data = torch::zeros({batch_size, channel_size, 9, 9}); // N, C, H, W
 	auto tmp_p_label = torch::zeros({batch_size, 81});
 	auto tmp_v_label = torch::zeros({batch_size});
-	int len = replay_buffer.size();
-
-	if (eval) {
-		len = replay_buffer_eval.size();
-	}
-
-	
+	int len = replay_buffer_eval.size();
 
 	for (int i = 0; i < batch_size; ++i) {
 		
 		int data_idx = rand() % len;
 		int trajectory_idx;
-		int trajectory_len;
-
-		if (eval) {
-			trajectory_len = replay_buffer_eval[data_idx].size();
-		} else {
-			trajectory_len = replay_buffer[data_idx].size();
-		}
+		int trajectory_len = replay_buffer_eval[data_idx].size();
+		
 
 		while (1) {
 			trajectory_idx = rand() % trajectory_len;
-			if (trajectory_idx % 2 == 0 && trajectory_idx + channel_size < trajectory_len) {  // choose black for start
+			if (trajectory_idx + seq_len < trajectory_len) {
 				break;
 			}
 		}
 
-		
-		for (int j = trajectory_idx; j < trajectory_idx + channel_size; ++j) {
-			
-			if (eval) {
-				for (int m = 0; m < 9; ++m) {
-					for (int n = 0; n < 9; ++n) {
-						if (replay_buffer_eval[data_idx][j][m][n] == 1) {
-							tmp_data.index_put_({i, j-trajectory_idx, m, n}, 1);
-						}
-					}
-				}
-			} else {
-				for (int m = 0; m < 9; ++m) {
-					for (int n = 0; n < 9; ++n) {
-						if (replay_buffer[data_idx][j][m][n] == 1) {
-							tmp_data.index_put_({i, j-trajectory_idx, m, n}, 1);
-						}
+		int k = 0;
+		for (int j = trajectory_idx; j < trajectory_idx + seq_len; ++j) {
+			for (int m = 0; m < 9; ++m) {
+				for (int n = 0; n < 9; ++n) {
+					if (replay_buffer_eval[data_idx][j][m][n] == 1) {
+						tmp_data.index_put_({i, k, m, n}, 1);
+					} else if (replay_buffer_eval[data_idx][j][m][n] == -1) {
+						tmp_data.index_put_({i, k + seq_len, m, n}, -1);
 					}
 				}
 			}
+			k++;
 		}
 		
-		int p;
-		if (eval) {
-			p = replay_buffer_eval_policy[data_idx][trajectory_idx + channel_size]; // policy target
-		} else {
-			p = replay_buffer_policy[data_idx][trajectory_idx + channel_size]; // policy target
+		int p = replay_buffer_eval_policy[data_idx][trajectory_idx + seq_len];   // policy target
+		int v = is_win_eval[data_idx];                                           // value target
+
+		if (p < 81) {  // black
+			for (int m = 0; m < 9; ++m) {
+				for (int n = 0; n < 9; ++n) {
+					tmp_data.index_put_({i, channel_size - 1, m, n}, 1);
+				}
+			}
+			tmp_p_label.index_put_({i, p}, 1);
+			if (v == 1) {
+				tmp_v_label.index_put_({i}, 1);   // now play black and black win
+			} else {
+				tmp_v_label.index_put_({i}, -1);  // now play black and white win
+			}
+
+		} else {       // white
+			for (int m = 0; m < 9; ++m) {
+				for (int n = 0; n < 9; ++n) {
+					tmp_data.index_put_({i, channel_size - 1, m, n}, -1);
+				}
+			}
+			tmp_p_label.index_put_({i, p - 81}, 1);
+			if (v == -1) {
+				tmp_v_label.index_put_({i}, 1);   // now play white and white win
+			} else {
+				tmp_v_label.index_put_({i}, -1);  // now play white and black win
+			}
 		}
 		
-		//tmp_p_label[i][p-81] = 1;
-		tmp_p_label.index_put_({i, p-81}, 1);
+	}
 		
-		int v;
-		if (eval) {
-			v = is_win_eval[data_idx];
-		} else {
-			v = is_win[data_idx];
+	//tmp_data = tmp_data.to(device);
+	//tmp_p_label = tmp_p_label.to(device);
+	//tmp_v_label = tmp_v_label.to(device);
+	return std::make_tuple(tmp_data, tmp_p_label, tmp_v_label);
+
+}
+
+
+auto Sample_Batch(int batch_size) {
+	srand((unsigned)time(NULL));
+
+	auto tmp_data = torch::zeros({batch_size, channel_size, 9, 9}); // N, C, H, W
+	auto tmp_p_label = torch::zeros({batch_size, 81});
+	auto tmp_v_label = torch::zeros({batch_size});
+	int len = replay_buffer.size();
+
+	for (int i = 0; i < batch_size; ++i) {
+		
+		int data_idx = rand() % len;
+		int trajectory_idx;
+		int trajectory_len = replay_buffer[data_idx].size();
+		
+
+		while (1) {
+			trajectory_idx = rand() % trajectory_len;
+			if (trajectory_idx + seq_len < trajectory_len) {
+				break;
+			}
 		}
 
-		//tmp_v_label[i] = v;
-		tmp_v_label.index_put_({i}, v);
+		int k = 0;
+		for (int j = trajectory_idx; j < trajectory_idx + seq_len; ++j) {
+			for (int m = 0; m < 9; ++m) {
+				for (int n = 0; n < 9; ++n) {
+					if (replay_buffer[data_idx][j][m][n] == 1) {
+						tmp_data.index_put_({i, k, m, n}, 1);
+					} else if (replay_buffer[data_idx][j][m][n] == -1) {
+						tmp_data.index_put_({i, k + seq_len, m, n}, -1);
+					}
+				}
+			}
+			k++;
+		}
+		
+		int p = replay_buffer_policy[data_idx][trajectory_idx + seq_len];   // policy target
+		int v = is_win[data_idx];                                           // value target
+
+		if (p < 81) {  // black
+			for (int m = 0; m < 9; ++m) {
+				for (int n = 0; n < 9; ++n) {
+					tmp_data.index_put_({i, channel_size - 1, m, n}, 1);
+				}
+			}
+			tmp_p_label.index_put_({i, p}, 1);
+			if (v == 1) {
+				tmp_v_label.index_put_({i}, 1);   // now play black and black win
+			} else {
+				tmp_v_label.index_put_({i}, -1);  // now play black and white win
+			}
+
+		} else {       // white
+			for (int m = 0; m < 9; ++m) {
+				for (int n = 0; n < 9; ++n) {
+					tmp_data.index_put_({i, channel_size - 1, m, n}, -1);
+				}
+			}
+			tmp_p_label.index_put_({i, p - 81}, 1);
+			if (v == -1) {
+				tmp_v_label.index_put_({i}, 1);   // now play white and white win
+			} else {
+				tmp_v_label.index_put_({i}, -1);  // now play white and black win
+			}
+		}
 		
 	}
 		
@@ -192,12 +257,14 @@ int main(){
 	srand((unsigned)time(NULL));
 	torch::Device device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 	// planes, height, width, filters, num_res_blocks, policy_size
-	const auto net_op = az::NetworkOptions{channel_size, 9, 9, 64, 2, 81};
+	const auto net_op = az::NetworkOptions{channel_size, 9, 9, 128, 2, 81};
 	
 	az::AlphaZeroNetwork net(net_op);
 	net->to(device);
 
 	open_history();
+
+	num_of_testing_data = replay_buffer_eval.size();
 
 	int replay_buffer_size = replay_buffer.size();
 	int replay_buffer_eval_size = replay_buffer_eval.size();
@@ -205,8 +272,7 @@ int main(){
 	std::cout << "replay buffer eval size: " << replay_buffer_eval_size << std::endl;
 
 	// debug
-	
-	//std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> tp = Sample_Batch(batch_size, 0);
+	//std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> tp = Sample_Batch(batch_size);
 	//auto data = std::get<0>(tp).to(device);
 	//auto p_label = std::get<1>(tp).to(device);
 	//auto v_label = std::get<2>(tp).to(device);
@@ -214,21 +280,18 @@ int main(){
 	//std::cout << p_label << std::endl;
 	//std::cout << v_label << std::endl;
 	
-
-	
 	int epoch = 150;
-	torch::optim::Adam optimizer(net->parameters(), torch::optim::AdamOptions(0.002).weight_decay(1e-4));
+	torch::optim::Adam optimizer(net->parameters(), torch::optim::AdamOptions(0.02).weight_decay(1e-4));
 
 	for(int i = 0; i < epoch; ++i) {
-		//net->zero_grad();
 		net->train();
 
 		float batch_total_loss_v = 0.0;
 		float batch_total_loss_p = 0.0;
 		int cnt_v = 0, cnt_p = 0;
-		for (int k = 0; k < 1300; ++k) {
+		for (int k = 0; k < num_of_training_data/10; ++k) {
 			optimizer.zero_grad();
-			std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> tp = Sample_Batch(batch_size, 0);
+			std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> tp = Sample_Batch(batch_size);
 
 			auto data = std::get<0>(tp).to(device);
 			auto p_label = std::get<1>(tp).to(device);
@@ -267,8 +330,8 @@ int main(){
 		}
 		float batch_total_loss = batch_total_loss_v + batch_total_loss_p;
 		std::cout << "epoch " << i + 1 << ":\n";
-		std::cout << "value acc: " << (float)cnt_v / (batch_size*1300) << "  ";
-		std::cout << "policy acc: " << (float)cnt_p / (batch_size*1300) << std::endl;
+		std::cout << "value acc: " << (float)cnt_v / (batch_size*num_of_training_data/10) << "  ";
+		std::cout << "policy acc: " << (float)cnt_p / (batch_size*num_of_training_data/10) << std::endl;
 		std::cout << "value loss: " << batch_total_loss_v << "  ";
 		std::cout << "policy loss: " << batch_total_loss_p << "  ";
 		std::cout << "total loss: " << batch_total_loss << std::endl;
@@ -280,8 +343,8 @@ int main(){
 			int cnt_v = 0, cnt_p = 0;
 			float batch_total_loss_v = 0.0;
 			float batch_total_loss_p = 0.0;
-			for (int k = 0; k < 200; ++k) {
-				std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> tp_eval = Sample_Batch(batch_size, 1);
+			for (int k = 0; k < num_of_testing_data/10; ++k) {
+				std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> tp_eval = Sample_Batch_Eval(batch_size);
 				
 				auto data_eval = std::get<0>(tp_eval).to(device);
 				auto p_label_eval = std::get<1>(tp_eval).to(device);
@@ -319,19 +382,16 @@ int main(){
 				}
 			}
 			
-			std::cout << "value acc: " << (float)cnt_v / (batch_size*200) << "  ";
-			std::cout << "policy acc: " << (float)cnt_p / (batch_size*200) << std::endl;
+			std::cout << "value acc: " << (float)cnt_v / (batch_size*num_of_testing_data/10) << "  ";
+			std::cout << "policy acc: " << (float)cnt_p / (batch_size*num_of_testing_data/10) << std::endl;
 			std::cout << "value loss: " << batch_total_loss_v << "  ";
 			std::cout << "policy loss: " << batch_total_loss_p << "  ";
 			std::cout << "total loss: " << batch_total_loss_v + batch_total_loss_p << std::endl << std::endl;
 
-			torch::save(net, "epoch" + std::to_string(i) + "_weights.pt");
+			torch::save(net, "epoch" + std::to_string(i + 1) + "_weights.pt");
 		}
 		
 	}
-
-	
-
 
 return 0;
 }
