@@ -20,6 +20,10 @@
 #include <queue>
 #include <torch/torch.h>
 #include "neural/network.h"
+#include "stateTorch.h"
+
+#define DEBUG
+
 
 class agent {
 public:
@@ -389,16 +393,23 @@ public:
 	}
 
 	void update(float leaf_value, float c_puct) {
-		std::fstream debug("record.txt", std::ios::app);
+		#ifdef DEBUG
+			std::fstream debug("record.txt", std::ios::app);
+		#endif
+
 		n_visits++;
 		Q += ((leaf_value - Q) / n_visits);
 
 		if (!is_root()) {
 			u = c_puct * P * std::sqrt(parent->n_visits) / (1 + n_visits);
-			debug << "parent_n_visits: " << parent->n_visits << " n_visits: " << n_visits << " Q: " << Q << " u: " << u << std::endl;
+			#ifdef DEBUG
+				debug << "parent_n_visits: " << parent->n_visits << " n_visits: " << n_visits << " Q: " << Q << " u: " << u << std::endl;
+			#endif
 		}
 		
-		debug.close();
+		#ifdef DEBUG
+			debug.close();
+		#endif
 	}
 
 	void update_recursive(float leaf_value, float c_puct) {
@@ -421,7 +432,7 @@ public:
 
 	MCTS(float lmb, float c, int rollout, int playout_depth, int p) : lmbda(lmb), c_puct(c), rollout_limit(rollout), L(playout_depth), n_playout(p) {
 		root = new TreeNode(nullptr, 1.0);
-		const auto net_op = az::NetworkOptions{5, 9, 9, 128, 5, 81};
+		const auto net_op = az::NetworkOptions{7, 9, 9, 128, 2, 81};
 		az::AlphaZeroNetwork net(net_op);
 		network = net;
 		std::string weights_file = "weights.pt";
@@ -429,46 +440,7 @@ public:
 		network->to(torch::kCUDA);
 	}
 
-	std::pair<torch::Tensor, torch::Tensor> forward_data(std::deque<board> states) {
-		
-		//std::fstream debug("record.txt", std::ios::app);
-		/*
-		for (auto &tmp : states) {
-			debug << tmp << std::endl;
-		}
-		debug << std::endl;
-		//debug.close();
-		*/
-		auto tmp_data = torch::zeros({1, 5, 9, 9}); // N, C, H, W
-
-		for (int j = 4; j >= 0; j--) {
-			board b = states.back();
-			b.rotate_left();
-			if (b.info().who_take_turns == board::white) {
-				for (int m = 0; m < 9; ++m) {
-					for (int n = 0; n < 9; ++n) {
-						if (b[m][n] == board::black) {
-							tmp_data.index_put_({0, j, m, n}, 1);
-						}	
-					}
-				}
-			} else {
-				for (int m = 0; m < 9; ++m) {
-					for (int n = 0; n < 9; ++n) {
-						if (b[m][n] == board::white) {
-							tmp_data.index_put_({0, j, m, n}, 1);
-						}	
-					}
-				}
-			}
-			states.pop_back();
-			if (states.empty()) {
-				break;
-			}
-		}
-
-		//debug << tmp_data << std::endl;
-
+	std::pair<torch::Tensor, torch::Tensor> forward_data(torch::Tensor tmp_data) {
 		tmp_data = tmp_data.to(torch::kCUDA);
 		auto [v_out, p_out] = network->forward(tmp_data);
 		p_out = torch::softmax(p_out, 1);
@@ -480,52 +452,29 @@ public:
 		return std::make_pair(v_out, p_out);
 	} 
 
-	float value_fn(std::deque<board> &states) {
-		/*
-		std::fstream debug("record.txt", std::ios::app);
-		for (auto &s : states) {
-			debug << s << std::endl;
-		}
-		*/
-
-		std::pair<torch::Tensor, torch::Tensor> result = forward_data(states);
+	float value_fn(board seq1, board seq2, board seq3) {
+		auto data = getTensor(seq1, seq2, seq3);
+		std::pair<torch::Tensor, torch::Tensor> result = forward_data(data);
 		auto v_out = result.first;
 		float v_pred = v_out.view(-1)[0].template item<float>();
-
-		//debug << v_pred << std::endl;
-
 		return v_pred;
-
 	}
 
-	std::unordered_map<int, float> policy_fn(std::deque<board> &states) {
-		/*
-		std::fstream debug("record.txt", std::ios::app);
-		for (auto &s : states) {
-			debug << s << std::endl;
-		}
-		*/
-
-		std::pair<torch::Tensor, torch::Tensor> result = forward_data(states);
+	std::unordered_map<int, float> policy_fn(board seq1, board seq2, board seq3) {
+		auto data = getTensor(seq1, seq2, seq3);
+		std::pair<torch::Tensor, torch::Tensor> result = forward_data(data);
 		auto p_out = result.second;
 		std::unordered_map<int, float> action_probs;
 
-		float unit = 0.0;
 		for (int j = 0; j < 81; ++j) {
-			board curr_b = states.back();
-
+			board curr_b = seq3;
 			//debug << p_out[0][j].template item<float>() << " ";
-
 			if (curr_b.place(j) == board::legal) {
 				float prob = p_out[0][j].template item<float>();
 				action_probs[j] = prob;
-				unit += prob;
 			}
 		}
 
-		for (auto &m : action_probs) {
-			m.second /= unit;
-		}
 		//debug << std::endl;
 		return action_probs;
 	}
@@ -542,21 +491,13 @@ public:
 		return best_action;
 	}
 
-	void playout(std::deque<board> seq_board, int leaf_depth) {
-		board curr_state = seq_board.back();
+	void playout(int leaf_depth, board seq1, board seq2, board seq3) {
 		TreeNode* node = root;
-		std::fstream debug("record.txt", std::ios::app);
+		//std::fstream debug("record.txt", std::ios::app);
 
 		for (int i = 0; i < leaf_depth; ++i) {
-
-			if (i != 0) {
-				seq_board.pop_front();
-				seq_board.push_back(curr_state);
-				curr_state = seq_board.back();
-			}
-			
 			if (node->is_leaf()) {
-				std::unordered_map<int, float> action_probs = policy_fn(seq_board);
+				std::unordered_map<int, float> action_probs = policy_fn(seq1, seq2, seq3);
 				// if end game, break
 				if (action_probs.empty()) {
 					break;
@@ -564,67 +505,55 @@ public:
 
 				node->expand(action_probs);
 			}
-
 			std::pair<int, TreeNode*> tmp = node->select();
 			node = tmp.second;
 			int action = tmp.first;
-			curr_state.place(action);
-			debug << "action: " << action << std::endl;
+			seq1 = seq2;
+			seq2 = seq3;
+			seq3.place(action);
+			//debug << "action: " << action << std::endl;
 		}
-
 		
-		float v = value_fn(seq_board);
-		//int z = evaluate_rollout(seq_board, rollout_limit);
+		float v = value_fn(seq1, seq2, seq3);
+		//int z = evaluate_rollout(seq1, seq2, seq3, rollout_limit);
 		int z = 0;
 		float leaf_value = (1-lmbda) * v + lmbda * z;
 		node->update_recursive(leaf_value, c_puct);
-		debug << std::endl;
-		debug.close();
+		//debug << std::endl;
+		//debug.close();
 	}
 
-	int evaluate_rollout(std::deque<board> &seq_board, int limit) {
-		board curr_state = seq_board.back();
-		unsigned player = curr_state.info().who_take_turns;
+	int evaluate_rollout(board seq1, board seq2, board seq3, int limit) {
+		unsigned player = seq3.info().who_take_turns;
 		for (int i = 0; i < limit; ++i) {
-			if (i != 0) {
-				seq_board.pop_front();
-				seq_board.push_back(curr_state);
-				curr_state = seq_board.back();
-			}
-
-			std::unordered_map<int, float> action_probs = policy_fn(seq_board);
+			std::unordered_map<int, float> action_probs = policy_fn(seq1, seq2, seq3);
 			if (action_probs.empty()) {
 				break;
 			}
 			int max_action = get_max_action(action_probs);
-			curr_state.place(max_action);
+			seq1 = seq2;
+			seq2 = seq3;
+			seq3.place(max_action);
 		}
 
-		if (player == curr_state.info().who_take_turns) {
+		if (player == seq3.info().who_take_turns) {
 			return -1;
 		} else {
 			return 1;
 		}
 	}
 
-	int get_move(std::deque<board> &states) {
-		std::deque<board> seq;
-		int len = states.size() - 1;
-
-		for (int i = 0; i < 5; ++i) {
-			if (len - i >= 0) {
-				seq.push_front(states[len - i]);
-			}
-		}
-
+	int get_move(MovingStates &moving_states) {
+		board seq1 = moving_states.states[0];
+		board seq2 = moving_states.states[1];
+		board seq3 = moving_states.states[2];
 		for (int i = 0; i < n_playout; ++i) {
-			//std::fstream debug("record.txt", std::ios::app);
-			//debug << "playout" << std::endl;
-			playout(seq, L);
+			playout(L, seq1, seq2, seq3);
 		}
 
 		int best_action = -1;
 		/*
+		// choose child by most visit
 		int most_visit = 0;
 		for (auto &child : root->children) {
 			if ((child.second)->n_visits > most_visit) {
@@ -633,6 +562,8 @@ public:
 			}
 		}
 		*/
+
+		// choose child by best Q + u
 		float best_value = -std::numeric_limits<float>::max();
 		for (auto &child : root->children) {
 			if ((child.second)->get_value() > best_value) {

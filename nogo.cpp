@@ -16,6 +16,7 @@
 #include "agent.h"
 #include "episode.h"
 #include "statistic.h"
+#include "stateTorch.h"
 
 int main(int argc, const char* argv[]) {
 	std::cout << "HollowNoGo-Demo: ";
@@ -87,7 +88,7 @@ int main(int argc, const char* argv[]) {
 		}
 	} else { // launch GTP shell
 		MCTS* mcts = nullptr;
-		std::deque<board> states;
+		MovingStates moving_states();
 
 		for (std::string command; std::getline(std::cin, command); ) {
 			if (command.back() == '\r') command.pop_back();
@@ -100,13 +101,7 @@ int main(int argc, const char* argv[]) {
 			std::string reply;
 			if (args[0] == "play" || args[0] == "genmove") { // play a move, or generate a move and play
 				if (!stat.is_episode_ongoing()) { // should open an episode
-					mcts = new MCTS(0, 5, 500, 20, 200);
-					states.push_back(board());
-					states.push_back(board());
-					states.push_back(board());
-					states.push_back(board());
-					states.push_back(board());
-
+					mcts = new MCTS(0, 5, 500, 10, 200);
 					black.open_episode("~:" + white.name());
 					white.open_episode(black.name() + ":~");
 					stat.open_episode(black.name() + ":" + white.name());
@@ -125,7 +120,8 @@ int main(int argc, const char* argv[]) {
 				if (args[0] == "play") { // play a move
 					std::string types = "?bw"; // black == 1, white == 2
 					action::place move(args[2], types.find(who.role()[0]));
-					states.push_back(game.state());
+					//states.push_back(game.state());
+					moving_states.add_state(game.state());
 					if (game.apply_action(move) != true) { // remote plays an illegal move?!
 						std::cout << "= " << "resign" << std::endl << std::endl;
 						// show the error message and terminate the shell
@@ -162,14 +158,15 @@ int main(int argc, const char* argv[]) {
 						mcts->root->parent = nullptr;
 					} else {
 						delete mcts;
-						mcts = new MCTS(0, 5, 500, 20, 200);
+						mcts = new MCTS(0, 5, 500, 10, 200);
 					}
 					
 
 				} else if (args[0] == "genmove") { // generate a move and play
-					states.push_back(game.state());
+					//states.push_back(game.state());
+					moving_states.add_state(game.state());
 					//action::place move = who.take_action(game.state());
-					int m = mcts->get_move(states);
+					int m = mcts->get_move(moving_states);
 					action::place move = who.take_action(game.state(), m);
 
 					if (game.apply_action(move) == true) {
@@ -187,7 +184,7 @@ int main(int argc, const char* argv[]) {
 							mcts->root->parent = nullptr;
 						} else {
 							delete mcts;
-							mcts = new MCTS(0, 5, 500, 20, 200);
+							mcts = new MCTS(0, 5, 500, 10, 200);
 						}
 						
 					} else { // I have no legal move to play
