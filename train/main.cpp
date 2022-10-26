@@ -1,4 +1,4 @@
- #include <bits/stdc++.h>
+#include <bits/stdc++.h>
 #include <torch/torch.h>
 #include "neural/network.h"
 
