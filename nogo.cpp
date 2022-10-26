@@ -88,7 +88,7 @@ int main(int argc, const char* argv[]) {
 		}
 	} else { // launch GTP shell
 		MCTS* mcts = nullptr;
-		MovingStates moving_states();
+		MovingStates moving_states;
 
 		for (std::string command; std::getline(std::cin, command); ) {
 			if (command.back() == '\r') command.pop_back();
@@ -194,7 +194,7 @@ int main(int argc, const char* argv[]) {
 
 			} else if (args[0] == "clear_board" || args[0] == "quit") { // reset game, or quit
 				if (stat.is_episode_ongoing()) { // should close an opened episode
-					states.clear();
+					moving_states.clean();
 					clean_node(mcts->root);
 					agent& win = stat.back().last_turns(black, white);
 					stat.close_episode(win.name());
