@@ -18,6 +18,7 @@ int main() {
 	// planes, height, width, filters, num_res_blocks, policy_size
 	const auto net_op = az::NetworkOptions{channel_size, 9, 9, 128, 2, 81};
 	az::AlphaZeroNetwork net(net_op);
+	torch::load(net, "weights.pt");
 	net->to(device);
 	tmp = tmp.to(device);
 	net->eval();
