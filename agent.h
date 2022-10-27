@@ -22,7 +22,7 @@
 #include "neural/network.h"
 #include "stateTorch.h"
 
-#define DEBUG
+//#define DEBUG
 
 
 class agent {
@@ -493,7 +493,10 @@ public:
 
 	void playout(int leaf_depth, board seq1, board seq2, board seq3) {
 		TreeNode* node = root;
-		//std::fstream debug("record.txt", std::ios::app);
+		#ifdef DEBUG
+			std::fstream debug("record.txt", std::ios::app);
+			debug << "select: " << std::endl;
+		#endif
 
 		for (int i = 0; i < leaf_depth; ++i) {
 			if (node->is_leaf()) {
@@ -511,16 +514,26 @@ public:
 			seq1 = seq2;
 			seq2 = seq3;
 			seq3.place(action);
-			//debug << "action: " << action << std::endl;
+			#ifdef DEBUG
+				debug << "action: " << action << std::endl;
+			#endif
 		}
 		
 		float v = value_fn(seq1, seq2, seq3);
 		//int z = evaluate_rollout(seq1, seq2, seq3, rollout_limit);
 		int z = 0;
 		float leaf_value = (1-lmbda) * v + lmbda * z;
+
+		#ifdef DEBUG
+			debug << "update: " << std::endl;
+		#endif
+
 		node->update_recursive(leaf_value, c_puct);
-		//debug << std::endl;
-		//debug.close();
+
+		#ifdef DEBUG
+			debug << std::endl;
+			debug.close();
+		#endif
 	}
 
 	int evaluate_rollout(board seq1, board seq2, board seq3, int limit) {

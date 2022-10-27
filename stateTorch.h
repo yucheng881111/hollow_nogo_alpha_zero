@@ -53,6 +53,7 @@ torch::Tensor getTensor(board a, board b, board c) {
 		}
 	}
 
+	// current board
 	for (int i = 0; i < 9; ++i) {
 		for (int j = 0; j < 9; ++j) {
 			if (c[i][j] == board::black) {
@@ -66,13 +67,13 @@ torch::Tensor getTensor(board a, board b, board c) {
 	if (c.info().who_take_turns == board::black) {
 		for (int i = 0; i < 9; ++i) {
 			for (int j = 0; j < 9; ++j) {
-				tmp_data.index_put_({0, 6, i, j}, -1);
+				tmp_data.index_put_({0, 6, i, j}, 1);
 			}
 		}
 	} else {
 		for (int i = 0; i < 9; ++i) {
 			for (int j = 0; j < 9; ++j) {
-				tmp_data.index_put_({0, 6, i, j}, 1);
+				tmp_data.index_put_({0, 6, i, j}, -1);
 			}
 		}
 	}
