@@ -69,7 +69,7 @@ void open_history() {
 
 		std::vector<std::vector<std::vector<bool>>> trajectory;
 		std::vector<std::vector<bool>> board(9, std::vector<bool>(9, 0));
-		
+		trajector.push_back(board);
 		for (auto &v : vec) {
 			std::pair<int, int> p = reconstruct(v);
 			if (v < 81) {     // black
@@ -117,13 +117,13 @@ auto Sample_Batch_Eval(int batch_size) {
 
 		while (1) {
 			trajectory_idx = rand() % trajectory_len;
-			if (trajectory_idx + seq_len - 1 < trajectory_len) {
+			if ((trajectory_idx - (seq_len - 1) >= 0) && (trajectory_idx != trajectory_len - 1)) {
 				break;
 			}
 		}
 
 		int k = 0;
-		for (int j = trajectory_idx; j < trajectory_idx + seq_len - 1; ++j) {
+		for (int j = trajectory_idx; j >= trajectory_idx - (seq_len - 1); --j) {
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					if (replay_buffer_eval[data_idx][j][m][n] == 1) {
@@ -136,24 +136,11 @@ auto Sample_Batch_Eval(int batch_size) {
 			k++;
 		}
 		
-		int p = replay_buffer_eval_policy[data_idx][trajectory_idx + seq_len - 1];   // policy target
-		int v = is_win_eval[data_idx];                                               // value target
-		// current board (before play)
-		for (int m = 0; m < 9; ++m) {
-			for (int n = 0; n < 9; ++n) {
-				std::pair<int, int> pos = reconstruct(p);
-				if (m == pos.first && n == pos.second) {
-					continue;
-				}
-				if (replay_buffer_eval[data_idx][trajectory_idx + seq_len - 1][m][n] == 1) {
-					tmp_data.index_put_({i, k, m, n}, 1);
-				} else if (replay_buffer_eval[data_idx][trajectory_idx + seq_len - 1][m][n] == -1) {
-					tmp_data.index_put_({i, k + seq_len, m, n}, -1);
-				}
-			}
-		}
+		int p = replay_buffer_eval_policy[data_idx][trajectory_idx];   // policy target
+		int v = is_win_eval[data_idx];                                 // value target
 
-		if (p < 81) {  // black
+		if (p < 81) {  // current play black
+			// last channel (play black => all 1)
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					tmp_data.index_put_({i, channel_size - 1, m, n}, 1);
@@ -166,7 +153,8 @@ auto Sample_Batch_Eval(int batch_size) {
 				tmp_v_label.index_put_({i}, -1);  // now play black and white win
 			}
 
-		} else {       // white
+		} else {       // current play white
+			// last channel (play white => all -1)
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					tmp_data.index_put_({i, channel_size - 1, m, n}, -1);
@@ -207,13 +195,13 @@ auto Sample_Batch(int batch_size) {
 
 		while (1) {
 			trajectory_idx = rand() % trajectory_len;
-			if (trajectory_idx + seq_len - 1 < trajectory_len) {
+			if ((trajectory_idx - (seq_len - 1) >= 0) && (trajectory_idx != trajectory_len - 1)) {
 				break;
 			}
 		}
 
 		int k = 0;
-		for (int j = trajectory_idx; j < trajectory_idx + seq_len - 1; ++j) {
+		for (int j = trajectory_idx; j >= trajectory_idx - (seq_len - 1); --j) {
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					if (replay_buffer[data_idx][j][m][n] == 1) {
@@ -226,23 +214,8 @@ auto Sample_Batch(int batch_size) {
 			k++;
 		}
 		
-		int p = replay_buffer_policy[data_idx][trajectory_idx + seq_len - 1];   // policy target
-		int v = is_win[data_idx];                                               // value target
-
-		// current board (before play)
-		for (int m = 0; m < 9; ++m) {
-			for (int n = 0; n < 9; ++n) {
-				std::pair<int, int> pos = reconstruct(p);
-				if (m == pos.first && n == pos.second) {
-					continue;
-				}
-				if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == 1) {
-					tmp_data.index_put_({i, k, m, n}, 1);
-				} else if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == -1) {
-					tmp_data.index_put_({i, k + seq_len, m, n}, -1);
-				}
-			}
-		}
+		int p = replay_buffer_policy[data_idx][trajectory_idx];   // policy target
+		int v = is_win[data_idx];                                 // value target
 
 		if (p < 81) {  // current play black
 			// last channel (play black => all 1)
@@ -281,7 +254,20 @@ auto Sample_Batch(int batch_size) {
 	return std::make_tuple(tmp_data, tmp_p_label, tmp_v_label);
 }
 
+bool test_value_fitting_fail(torch::Tensor v_out) {
+	float test = v_out.view(-1)[0].template item<float>();
+	for(int j = 0; j < batch_size; ++j){
+		float v_pred = v_out.view(-1)[j].template item<float>();
+		if (std::abs(v_pred) > 0.1) {
+			return false;
+		}
 
+		if (v_pred != test) {
+			return false;
+		}
+	}
+	return true;
+}
 
 int main(){
 	
@@ -329,6 +315,10 @@ int main(){
 			auto v_label = std::get<2>(tp).to(device);
 
 			auto [v_out, p_out] = net->forward(data);
+
+			if (test_value_fitting_fail(v_out)) {
+				std::cout << "value fitting fail !!!" << std::endl;
+			}
 
 			auto v_loss = torch::mse_loss(v_out.view(-1), v_label);
 			auto p_loss = torch::mean(-torch::sum(p_label * torch::log_softmax(p_out, 1), 1));

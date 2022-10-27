@@ -33,11 +33,12 @@ torch::Tensor getTensor(board a, board b, board c) {
 	b.rotate_left();
 	c.rotate_left();
 
+	// current board
 	for (int i = 0; i < 9; ++i) {
 		for (int j = 0; j < 9; ++j) {
-			if (a[i][j] == board::black) {
+			if (c[i][j] == board::black) {
 				tmp_data.index_put_({0, 0, i, j}, 1);
-			} else if (a[i][j] == board::white) {
+			} else if (c[i][j] == board::white) {
 				tmp_data.index_put_({0, 3, i, j}, -1);
 			}
 		}
@@ -53,12 +54,11 @@ torch::Tensor getTensor(board a, board b, board c) {
 		}
 	}
 
-	// current board
 	for (int i = 0; i < 9; ++i) {
 		for (int j = 0; j < 9; ++j) {
-			if (c[i][j] == board::black) {
+			if (a[i][j] == board::black) {
 				tmp_data.index_put_({0, 2, i, j}, 1);
-			} else if (b[i][j] == board::white) {
+			} else if (a[i][j] == board::white) {
 				tmp_data.index_put_({0, 5, i, j}, -1);
 			}
 		}

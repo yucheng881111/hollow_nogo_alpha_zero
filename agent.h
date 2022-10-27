@@ -23,7 +23,7 @@
 #include "stateTorch.h"
 
 //#define DEBUG
-#define DEBUG_MODEL
+//#define DEBUG_MODEL
 
 
 class agent {
