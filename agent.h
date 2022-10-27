@@ -23,6 +23,7 @@
 #include "stateTorch.h"
 
 //#define DEBUG
+#define DEBUG_MODEL
 
 
 class agent {
@@ -435,35 +436,57 @@ public:
 		const auto net_op = az::NetworkOptions{7, 9, 9, 128, 2, 81};
 		az::AlphaZeroNetwork net(net_op);
 		network = net;
-		std::string weights_file = "weights.pt";
+		std::string weights_file = "epoch40_weights.pt";
 		torch::load(network, weights_file);
 		network->to(torch::kCUDA);
+		network->eval();
 	}
-
-	std::pair<torch::Tensor, torch::Tensor> forward_data(torch::Tensor tmp_data) {
-		tmp_data = tmp_data.to(torch::kCUDA);
-		auto [v_out, p_out] = network->forward(tmp_data);
-		p_out = torch::softmax(p_out, 1);
-
-		//std::fstream debug("record.txt", std::ios::app);
-		//debug << v_out << std::endl;
-		//debug << p_out << std::endl;
-		//debug.close();
-		return std::make_pair(v_out, p_out);
-	} 
 
 	float value_fn(board seq1, board seq2, board seq3) {
 		auto data = getTensor(seq1, seq2, seq3);
-		std::pair<torch::Tensor, torch::Tensor> result = forward_data(data);
-		auto v_out = result.first;
+		
+		#ifdef DEBUG_MODEL
+			std::fstream debug("record_model.txt", std::ios::app);
+			debug << "value:" << std::endl;
+			debug << seq1 << std::endl;
+			debug << seq2 << std::endl;
+			debug << seq3 << std::endl;
+			debug << data << std::endl;
+			debug << std::endl;
+		#endif
+		
+		data = data.to(torch::kCUDA);
+		auto [v_out, p_out] = network->forward(data);
+
+		#ifdef DEBUG_MODEL
+			debug << v_out << std::endl;
+			debug.close();
+		#endif
+
 		float v_pred = v_out.view(-1)[0].template item<float>();
+		
+		
+		
 		return v_pred;
 	}
 
 	std::unordered_map<int, float> policy_fn(board seq1, board seq2, board seq3) {
 		auto data = getTensor(seq1, seq2, seq3);
-		std::pair<torch::Tensor, torch::Tensor> result = forward_data(data);
-		auto p_out = result.second;
+		/*
+		#ifdef DEBUG_MODEL
+			std::fstream debug("record_model.txt", std::ios::app);
+			debug << "policy:" << std::endl;
+			debug << seq1 << std::endl;
+			debug << seq2 << std::endl;
+			debug << seq3 << std::endl;
+			debug << data << std::endl;
+			debug << std::endl;
+			debug.close();
+		#endif
+		*/
+		data = data.to(torch::kCUDA);
+		auto [v_out, p_out] = network->forward(data);
+		p_out = torch::softmax(p_out, 1);
 		std::unordered_map<int, float> action_probs;
 
 		for (int j = 0; j < 81; ++j) {
