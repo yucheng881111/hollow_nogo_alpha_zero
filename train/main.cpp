@@ -145,9 +145,9 @@ auto Sample_Batch_Eval(int batch_size) {
 				if (m == pos.first && n == pos.second) {
 					continue;
 				}
-				if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == 1) {
+				if (replay_buffer_eval[data_idx][trajectory_idx + seq_len - 1][m][n] == 1) {
 					tmp_data.index_put_({i, k, m, n}, 1);
-				} else if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == -1) {
+				} else if (replay_buffer_eval[data_idx][trajectory_idx + seq_len - 1][m][n] == -1) {
 					tmp_data.index_put_({i, k + seq_len, m, n}, -1);
 				}
 			}
