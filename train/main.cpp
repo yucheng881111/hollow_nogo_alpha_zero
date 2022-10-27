@@ -117,13 +117,13 @@ auto Sample_Batch_Eval(int batch_size) {
 
 		while (1) {
 			trajectory_idx = rand() % trajectory_len;
-			if (trajectory_idx + seq_len < trajectory_len) {
+			if (trajectory_idx + seq_len - 1 < trajectory_len) {
 				break;
 			}
 		}
 
 		int k = 0;
-		for (int j = trajectory_idx; j < trajectory_idx + seq_len; ++j) {
+		for (int j = trajectory_idx; j < trajectory_idx + seq_len - 1; ++j) {
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					if (replay_buffer_eval[data_idx][j][m][n] == 1) {
@@ -136,8 +136,22 @@ auto Sample_Batch_Eval(int batch_size) {
 			k++;
 		}
 		
-		int p = replay_buffer_eval_policy[data_idx][trajectory_idx + seq_len];   // policy target
-		int v = is_win_eval[data_idx];                                           // value target
+		int p = replay_buffer_eval_policy[data_idx][trajectory_idx + seq_len - 1];   // policy target
+		int v = is_win_eval[data_idx];                                               // value target
+		// current board (before play)
+		for (int m = 0; m < 9; ++m) {
+			for (int n = 0; n < 9; ++n) {
+				std::pair<int, int> pos = reconstruct(p);
+				if (m == pos.first && n == pos.second) {
+					continue;
+				}
+				if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == 1) {
+					tmp_data.index_put_({i, k, m, n}, 1);
+				} else if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == -1) {
+					tmp_data.index_put_({i, k + seq_len, m, n}, -1);
+				}
+			}
+		}
 
 		if (p < 81) {  // black
 			for (int m = 0; m < 9; ++m) {
@@ -193,13 +207,13 @@ auto Sample_Batch(int batch_size) {
 
 		while (1) {
 			trajectory_idx = rand() % trajectory_len;
-			if (trajectory_idx + seq_len < trajectory_len) {
+			if (trajectory_idx + seq_len - 1 < trajectory_len) {
 				break;
 			}
 		}
 
 		int k = 0;
-		for (int j = trajectory_idx; j < trajectory_idx + seq_len; ++j) {
+		for (int j = trajectory_idx; j < trajectory_idx + seq_len - 1; ++j) {
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					if (replay_buffer[data_idx][j][m][n] == 1) {
@@ -212,10 +226,26 @@ auto Sample_Batch(int batch_size) {
 			k++;
 		}
 		
-		int p = replay_buffer_policy[data_idx][trajectory_idx + seq_len];   // policy target
-		int v = is_win[data_idx];                                           // value target
+		int p = replay_buffer_policy[data_idx][trajectory_idx + seq_len - 1];   // policy target
+		int v = is_win[data_idx];                                               // value target
 
-		if (p < 81) {  // black
+		// current board (before play)
+		for (int m = 0; m < 9; ++m) {
+			for (int n = 0; n < 9; ++n) {
+				std::pair<int, int> pos = reconstruct(p);
+				if (m == pos.first && n == pos.second) {
+					continue;
+				}
+				if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == 1) {
+					tmp_data.index_put_({i, k, m, n}, 1);
+				} else if (replay_buffer[data_idx][trajectory_idx + seq_len - 1][m][n] == -1) {
+					tmp_data.index_put_({i, k + seq_len, m, n}, -1);
+				}
+			}
+		}
+
+		if (p < 81) {  // current play black
+			// last channel (play black => all 1)
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					tmp_data.index_put_({i, channel_size - 1, m, n}, 1);
@@ -228,7 +258,8 @@ auto Sample_Batch(int batch_size) {
 				tmp_v_label.index_put_({i}, -1);  // now play black and white win
 			}
 
-		} else {       // white
+		} else {       // current play white
+			// last channel (play white => all -1)
 			for (int m = 0; m < 9; ++m) {
 				for (int n = 0; n < 9; ++n) {
 					tmp_data.index_put_({i, channel_size - 1, m, n}, -1);
