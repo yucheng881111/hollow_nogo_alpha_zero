@@ -69,7 +69,7 @@ void open_history() {
 
 		std::vector<std::vector<std::vector<bool>>> trajectory;
 		std::vector<std::vector<bool>> board(9, std::vector<bool>(9, 0));
-		trajector.push_back(board);
+		trajectory.push_back(board);
 		for (auto &v : vec) {
 			std::pair<int, int> p = reconstruct(v);
 			if (v < 81) {     // black
