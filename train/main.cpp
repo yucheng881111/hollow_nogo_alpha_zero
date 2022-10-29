@@ -302,7 +302,7 @@ int main(){
 
 	for(int i = 0; i < epoch; ++i) {
 		net->train();
-
+		bool fitting_fail = 0;
 		float batch_total_loss_v = 0.0;
 		float batch_total_loss_p = 0.0;
 		int cnt_v = 0, cnt_p = 0;
@@ -317,7 +317,7 @@ int main(){
 			auto [v_out, p_out] = net->forward(data);
 
 			if (test_value_fitting_fail(v_out)) {
-				std::cout << "value fitting fail !!!" << std::endl;
+				fitting_fail = 1;
 			}
 
 			auto v_loss = torch::mse_loss(v_out.view(-1), v_label);
@@ -356,6 +356,9 @@ int main(){
 		std::cout << "value loss: " << batch_total_loss_v << "  ";
 		std::cout << "policy loss: " << batch_total_loss_p << "  ";
 		std::cout << "total loss: " << batch_total_loss << std::endl;
+		if (fitting_fail) {
+			std::cout << "value fitting fail !!!" << std::endl;
+		}
 		
 		
 		if ((i + 1) % 5 == 0) {
