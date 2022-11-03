@@ -4,11 +4,11 @@
 
 //using namespace std;
 
-std::vector<std::vector<std::vector<std::vector<bool>>>> replay_buffer;
+std::vector<std::vector<std::vector<std::vector<int>>>> replay_buffer;
 std::vector<std::vector<int>> replay_buffer_policy;
 std::vector<int> is_win;
 
-std::vector<std::vector<std::vector<std::vector<bool>>>> replay_buffer_eval;
+std::vector<std::vector<std::vector<std::vector<int>>>> replay_buffer_eval;
 std::vector<std::vector<int>> replay_buffer_eval_policy;
 std::vector<int> is_win_eval;
 
@@ -67,8 +67,8 @@ void open_history() {
 		
 		int len = vec.size();
 
-		std::vector<std::vector<std::vector<bool>>> trajectory;
-		std::vector<std::vector<bool>> board(9, std::vector<bool>(9, 0));
+		std::vector<std::vector<std::vector<int>>> trajectory;
+		std::vector<std::vector<int>> board(9, std::vector<int>(9, 0));
 		trajectory.push_back(board);
 		for (auto &v : vec) {
 			std::pair<int, int> p = reconstruct(v);
