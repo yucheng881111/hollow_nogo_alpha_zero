@@ -94,13 +94,15 @@ void open_history() {
     
 
     ifs.close();
-	ifs2.close();
+    ifs2.close();
 
 }
 
 int main() {
 	open_history();
 	auto tmp_data = torch::zeros({1, 7, 9, 9});
+	auto tmp_p_label = torch::zeros({1, 81});
+	auto tmp_v_label = torch::zeros({1});
 	/*
 	for (int i = 0; i < 9; ++i) {
 		for (int j = 0; j < 9; ++j) {
@@ -109,7 +111,10 @@ int main() {
 	}
 	*/
 	int k = 0;
-	int trajectory_idx = 15;
+	int trajectory_idx = 2;
+	std::cout << "data index 0 has size: " << replay_buffer[0].size() << std::endl;
+	std::cout << "input trajectory index: ";
+	std::cin >> trajectory_idx;
 	for (int j = trajectory_idx; j >= trajectory_idx - (seq_len - 1); --j) {
 		//std::cout << replay_buffer[0][j] << std::endl;
 		for (int m = 0; m < 9; ++m) {
@@ -134,14 +139,14 @@ int main() {
 				tmp_data.index_put_({0, channel_size - 1, m, n}, 1);
 			}
 		}
-		/*
-		tmp_p_label.index_put_({i, p}, 1);
+		
+		tmp_p_label.index_put_({0, p}, 1);
 		if (v == 1) {
-			tmp_v_label.index_put_({i}, 1);   // now play black and black win
+			tmp_v_label.index_put_({0}, 1);   // now play black and black win
 		} else {
-			tmp_v_label.index_put_({i}, -1);  // now play black and white win
+			tmp_v_label.index_put_({0}, -1);  // now play black and white win
 		}
-		*/
+		
 	} else {       // current play white
 		// last channel (play white => all -1)
 		for (int m = 0; m < 9; ++m) {
@@ -149,14 +154,14 @@ int main() {
 				tmp_data.index_put_({0, channel_size - 1, m, n}, -1);
 			}
 		}
-		/*
-		tmp_p_label.index_put_({i, p - 81}, 1);
+		
+		tmp_p_label.index_put_({0, p - 81}, 1);
 		if (v == -1) {
-			tmp_v_label.index_put_({i}, 1);   // now play white and white win
+			tmp_v_label.index_put_({0}, 1);   // now play white and white win
 		} else {
-			tmp_v_label.index_put_({i}, -1);  // now play white and black win
+			tmp_v_label.index_put_({0}, -1);  // now play white and black win
 		}
-		*/
+		
 	}
 
 
@@ -173,6 +178,8 @@ int main() {
 	auto [v_out, p_out] = net->forward(tmp_data);
 
 	std::cout << tmp_data << std::endl;
+	std::cout << tmp_p_label << std::endl;
+	std::cout << tmp_v_label << std::endl;
 
 	float v_pred = v_out.view(-1)[0].template item<float>();
 	std::cout << "value: " << v_pred << std::endl << std::endl;
