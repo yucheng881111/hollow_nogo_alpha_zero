@@ -102,7 +102,7 @@ void open_history() {
 
 int main() {
 	open_history();
-	auto tmp_data = torch::zeros({1, 7, 9, 9});
+	auto tmp_data = torch::zeros({1, channel_size, 9, 9});
 	auto tmp_p_label = torch::zeros({1, 81});
 	auto tmp_v_label = torch::zeros({1});
 	/*
@@ -112,21 +112,24 @@ int main() {
 		}
 	}
 	*/
-
-	int len = replay_buffer[0].size();
-	std::cout << "data index 0 has size: " << len << std::endl;
+  
+  int idx = 1;
+  std::cout << "trajectory idx: ";
+  std::cin >> idx;
+	int len = replay_buffer[idx].size();
+	std::cout << "data index " << idx << " has size: " << len << std::endl;
 
 	#ifdef EVAL_VALUE
-		for (int trajectory_idx = 2; trajectory_idx <= len-2; ++trajectory_idx) {
+		for (int trajectory_idx = (seq_len-1); trajectory_idx <= len-(seq_len-1); ++trajectory_idx) {
 			int k = 0;
 			std::cout << "trajectory idx: " << trajectory_idx << std::endl;
 			for (int j = trajectory_idx; j >= trajectory_idx - (seq_len - 1); --j) {
 				//std::cout << replay_buffer[0][j] << std::endl;
 				for (int m = 0; m < 9; ++m) {
 					for (int n = 0; n < 9; ++n) {
-						if (replay_buffer[0][j][m][n] == 1) {
+						if (replay_buffer[idx][j][m][n] == 1) {
 							tmp_data.index_put_({0, k, m, n}, 1);
-						} else if (replay_buffer[0][j][m][n] == -1) {
+						} else if (replay_buffer[idx][j][m][n] == -1) {
 							tmp_data.index_put_({0, k + seq_len, m, n}, -1);
 						}
 					}
@@ -134,8 +137,8 @@ int main() {
 				k++;
 			}
 
-			int p = replay_buffer_policy[0][trajectory_idx];   // policy target
-			int v = is_win[0];                                 // value target
+			int p = replay_buffer_policy[idx][trajectory_idx];   // policy target
+			int v = is_win[idx];                                 // value target
 
 			if (p < 81) {  // current play black
 				// last channel (play black => all 1)
@@ -170,12 +173,11 @@ int main() {
 			}
 
 
-			int channel_size = 7;
 			torch::Device device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 			// planes, height, width, filters, num_res_blocks, policy_size
 			const auto net_op = az::NetworkOptions{channel_size, 9, 9, 128, 2, 81};
 			az::AlphaZeroNetwork net(net_op);
-			torch::load(net, "epoch150_weights.pt");
+			torch::load(net, "epoch95_weights.pt");
 			net->to(device);
 			tmp_data = tmp_data.to(device);
 			net->eval();
